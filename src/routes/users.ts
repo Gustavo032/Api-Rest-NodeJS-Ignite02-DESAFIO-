@@ -2,11 +2,9 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import crypto, { randomUUID } from 'node:crypto'
 import { knex } from '../database'
-import {
-  authenticate,
-  authenticationMiddleware,
-} from '../middlewares/authMiddleware'
-import { authorize } from '../middlewares/authorizationMiddleware'
+
+// lslint:disable-next-line no-unused-vars
+import jwt from 'jsonwebtoken'
 
 // todo plugin precisa sem async
 
@@ -21,115 +19,129 @@ import { authorize } from '../middlewares/authorizationMiddleware'
 // @fastify/cookie
 
 export async function usersRoutes(app: FastifyInstance) {
-  app.post('/meals', { preHandler: authenticate }, async (request, reply) => {
-    const { name, description, date_time, is_in_diet } = request.body
-    const user_id = request.user.id
+  app.addHook('preHandler', async (request, reply) => {
+    console.log(`[${request.method}] ${request.url}`)
+  })
+  app.post('/', async (request, reply) => {
+    // validação dos dados vindo da req
+    const createUserBodySchema = z.object({
+      name: z.string(),
+      email: z.string(),
+      password: z.string(),
+    })
 
-    try {
-      const newMeal = await knex('meals').insert({
-        user_id,
+    // é tipo uma desestruturação usando a validação schema do zod
+    const { name, email, password } = createUserBodySchema.parse(request.body)
+
+    function hashPassword(password: string, salt: string) {
+      const hash = crypto.createHash('sha256')
+      hash.update(password + salt)
+      const hashedPassword = hash.digest('hex')
+      return hashedPassword
+    }
+
+    function generateSalt() {
+      return crypto.randomBytes(16).toString('hex')
+    }
+
+    const salt = generateSalt()
+    const hashedUserInputPassword = hashPassword(password, salt)
+
+    const userCreated = await knex('users')
+      .insert({
+        id: crypto.randomUUID(),
         name,
-        description,
-        date_time,
-        is_in_diet,
+        email,
+        salt,
+        password: hashedUserInputPassword,
+        created_at: String(new Date()),
       })
+      .returning('*')
 
-      reply.code(201).send({ id: newMeal[0] })
-    } catch (error) {
-      console.error(error)
-      reply.status(500).send({ error: 'Internal Server Error' })
+    // bom retornar sempre como objeto-- melhor pra adicionar e modificar informações futuramente
+    return {
+      total: userCreated.length,
+      created: userCreated,
     }
   })
 
-  // Edita uma refeição existente
-  app.put(
-    '/meals/:id',
-    {
-      preHandler: [authenticate, authorize],
-      schema: { params: { id: { type: 'integer' } } },
-    },
-    async (request, reply) => {
-      const mealId = request.params.id
-      const { name, description, date_time, is_in_diet } = request.body
+  app.post('/login', async (request, reply) => {
+    // validação dos dados vindo da req
+    const loginBodySchema = z.object({
+      name: z.string(),
+      email: z.string(),
+      password: z.string(),
+    })
 
-      try {
-        const updatedRows = await knex('meals')
-          .where({ id: mealId })
-          .update({ name, description, date_time, is_in_diet })
+    const { name, email, password } = loginBodySchema.parse(request.body)
 
-        if (updatedRows > 0) {
-          reply.send({ message: 'Meal updated successfully' })
-        } else {
-          reply.status(404).send({ error: 'Meal not found' })
-        }
-      } catch (error) {
-        console.error(error)
-        reply.status(500).send({ error: 'Internal Server Error' })
+    function hashPassword(password: string, salt: string) {
+      const hash = crypto.createHash('sha256')
+      hash.update(password + salt)
+      const hashedPassword = hash.digest('hex')
+      return hashedPassword
+    }
+
+    const user = await knex('users').where('email', email).first()
+
+    if (!user) {
+      // Usuário não encontrado
+      reply
+        .status(401)
+        .send({ success: false, message: 'Credenciais inválidas' })
+
+      return { success: false, message: 'Credenciais inválidas' }
+    }
+
+    const hashedLoginPassword = hashPassword(password, user.salt)
+
+    const login = await knex('users')
+      .where('email', email)
+      .andWhere('password', hashedLoginPassword)
+      .returning('*')
+
+    console.log(login)
+    console.log(hashedLoginPassword)
+
+    if (login.length > 0) {
+      console.log('Login deu certoooo!!!' + login)
+      const chaveSecreta = '99698035'
+
+      // Informações que você deseja incluir no token
+      const payload = {
+        usuarioId: name + randomUUID(),
+        nome: name,
+        papel: 'user',
       }
-    },
-  )
 
-  // Apaga uma refeição existente
-  app.delete(
-    '/meals/:id',
-    {
-      preHandler: [authenticate, authorize],
-      schema: { params: { id: { type: 'integer' } } },
-    },
-    async (request, reply) => {
-      const mealId = request.params.id
-
-      try {
-        const deletedRows = await knex('meals').where({ id: mealId }).del()
-
-        if (deletedRows > 0) {
-          reply.send({ message: 'Meal deleted successfully' })
-        } else {
-          reply.status(404).send({ error: 'Meal not found' })
-        }
-      } catch (error) {
-        console.error(error)
-        reply.status(500).send({ error: 'Internal Server Error' })
+      // Configurações do token, como algoritmo de assinatura e tempo de expiração
+      const opcoes: jwt.SignOptions = {
+        algorithm: 'HS256', // Algoritmo de assinatura HMAC SHA-256
+        expiresIn: '2h', // Tempo de expiração do token (pode ser em segundos, minutos, horas, dias, etc.)
       }
-    },
-  )
 
-  // Lista todas as refeições do usuário autenticado
-  app.get('/meals', { preHandler: authenticate }, async (request, reply) => {
-    const userId = request.user.id
+      // Criação do token
+      const token = jwt.sign(payload, chaveSecreta, opcoes)
 
-    try {
-      const userMeals = await knex('meals').where({ user_id: userId })
+      console.log('Token JWT:', token)
 
-      reply.send(userMeals)
-    } catch (error) {
-      console.error(error)
-      reply.status(500).send({ error: 'Internal Server Error' })
+      await knex('users').where('email', email).update('temp_if_login', token)
+
+      reply.send({ status: 'success', user: name, newToken: token })
+    } else {
+      reply
+        .status(401)
+        .send({ success: false, message: 'Credenciais inválidas' })
+      console.log('Login failed' + login)
     }
   })
 
-  // Obtém detalhes de uma refeição específica
-  app.get(
-    '/meals/:id',
-    {
-      preHandler: [authenticate, authorize],
-      schema: { params: { id: { type: 'integer' } } },
-    },
-    async (request, reply) => {
-      const mealId = request.params.id
+  app.get('/all', async (request, reply) => {
+    const usersRegistred = await knex('users').select('*')
 
-      try {
-        const meal = await knex('meals').where({ id: mealId }).first()
-
-        if (meal) {
-          reply.send(meal)
-        } else {
-          reply.status(404).send({ error: 'Meal not found' })
-        }
-      } catch (error) {
-        console.error(error)
-        reply.status(500).send({ error: 'Internal Server Error' })
-      }
-    },
-  )
+    return {
+      total: usersRegistred.length,
+      usersRegistred,
+    }
+  })
 }

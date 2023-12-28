@@ -1,13 +1,24 @@
-# RF // requisitos funcionais 
-- [X] O usuário deverá criar uma nova transação;
-- [ ] O usuário deve poder ter um resumo de sua conta: balanço da conta;
-- [X] O usuario deve poder listar todas as transações que já ocorreram;
-- [X] O usuario deve poder visualizar uma transação única
+### Regras da aplicação
 
-# RN // regra de negócios
-- [X] A transação pode ser do tipo crédito (que somará ao valor total) ou débito (que subtrairá);
-- [ ] Deve ser possível identificarmos o usuário entre as requisições;
-- [ ] O usuário só pode visualizar transações da qual ele criou
-  
-# RNF // Requisitos não fucionais (tech) (oq vamos fazer para atingir e tals)
-- [ ] 
+- Deve ser possível criar um usuário [feito]
+- Deve ser possível identificar o usuário entre as requisições[feito]
+- 
+- Deve ser possível registrar uma refeição feita, com as seguintes informações:
+    
+    *As refeições devem ser relacionadas a um usuário.*
+    
+    - Nome
+    - Descrição
+    - Data e Hora
+    - Está dentro ou não da dieta
+    
+- Deve ser possível editar uma refeição, podendo alterar todos os dados acima
+- Deve ser possível apagar uma refeição
+- Deve ser possível listar todas as refeições de um usuário
+- Deve ser possível visualizar uma única refeição
+- Deve ser possível recuperar as métricas de um usuário
+    - Quantidade total de refeições registradas
+    - Quantidade total de refeições dentro da dieta
+    - Quantidade total de refeições fora da dieta
+    - Melhor sequência de refeições dentro da dieta
+- O usuário só pode visualizar, editar e apagar as refeições o qual ele criou

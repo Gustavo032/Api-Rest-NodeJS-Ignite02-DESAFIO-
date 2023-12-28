@@ -1,7 +1,8 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import crypto, { randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { knex } from '../database'
+import jwt from 'jsonwebtoken'
 
 // todo plugin precisa sem async
 
@@ -19,46 +20,87 @@ export async function authRoutes(app: FastifyInstance) {
   app.addHook('preHandler', async (request, reply) => {
     console.log(`[${request.method}] ${request.url}`)
   })
-  app.post('/create', async (request, reply) => {
-    // validação dos dados vindo da req
-    const createTransactionBodySchema = z.object({
+  app.post('/', async (request, reply) => {
+    const loginBodySchema = z.object({
       name: z.string(),
+      jwtoken: z.string(),
       email: z.string(),
-      password: z.string(),
     })
 
-    // é tipo uma desestruturação usando a validação schema do zod
-    const { name, email, password } = createTransactionBodySchema.parse(
-      request.body,
-    )
+    const { name, jwtoken, email } = loginBodySchema.parse(request.body)
+    // vai ir lá no banco de dados e ver o temp que bate com o jwt enviado (se existir)
+    // substituir pela variavel ambiente .env
+    const secretKey = '99698035'
 
-    function hashPassword(password: string, salt: string) {
-      const hash = crypto.createHash('sha256')
-      hash.update(password + salt)
-      const hashedPassword = hash.digest('hex')
-      return hashedPassword
+    const user = await knex('users').where('email', email).first()
+    console.log(user)
+    if (!user) {
+      // Usuário não encontrado
+      reply
+        .status(401)
+        .send({ success: false, message: 'Credenciais inválidas' })
+
+      return { success: false, message: 'Credenciais inválidas' }
     }
 
-    function generateSalt() {
-      return crypto.randomBytes(16).toString('hex')
-    }
+    // Verifica se o token é válido e não expirou
+    jwt.verify(jwtoken, secretKey, (error: any, decoded: any) => {
+      if (error) {
+        if (error.name === 'TokenExpiredError') {
+          console.log('Token expirado')
+          reply.status(401).send({ succes: false, message: 'Token expirado' })
+        } else {
+          reply.status(401).send({
+            succes: false,
+            message: 'Erro ao verificar o token: ' + error.message,
+          })
+          console.error('Erro ao verificar o token: ', error.message)
+        }
+      } else {
+        console.log('Token válido:', decoded)
+        // Aqui, `decoded` contém o payload do token
+        console.log(decoded)
+      }
+    })
 
-    const salt = generateSalt()
-    const hashedUserInputPassword = hashPassword(password, salt)
-
-    const paths = await knex('users')
-      .insert({
-        name,
-        email,
-        password: hashedUserInputPassword,
-      })
+    // procura o email e jwt correspondente
+    const authenticated = await knex('users')
+      .where('email', email)
+      .where('temp_if_login', jwtoken)
       .returning('*')
+    console.log(authenticated)
 
-    // bom retornar sempre como objeto-- melhor pra adicionar e modificar informações futuramente
-    return {
-      total: paths.length,
-      created: paths,
-      next: randomUUID(),
+    if (authenticated.length > 0) {
+      const chaveSecreta = '99698035'
+
+      // Informações que você deseja incluir no token
+      const payload = {
+        usuarioId: name + randomUUID(),
+        nome: name,
+        papel: 'user',
+      }
+
+      // Configurações do token, como algoritmo de assinatura e tempo de expiração
+      const opcoes: jwt.SignOptions = {
+        algorithm: 'HS256', // Algoritmo de assinatura HMAC SHA-256
+        expiresIn: '1h', // Tempo de expiração do token (pode ser em segundos, minutos, horas, dias, etc.)
+      }
+
+      // Criação do token
+      const token = jwt.sign(payload, chaveSecreta, opcoes)
+
+      await knex('users')
+        .where('email', email)
+        .first()
+        .update('temp_if_login', token)
+
+      reply.status(200).send({
+        succes: true,
+        message: 'Token válido: ',
+        newToken: token,
+      })
+    } else {
+      reply.status(401).send({ error: 'Credenciais inválidas' })
     }
   })
 }
