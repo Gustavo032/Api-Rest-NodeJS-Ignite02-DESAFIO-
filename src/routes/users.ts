@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import crypto, { randomUUID } from 'node:crypto'
+import crypto from 'node:crypto'
 import { knex } from '../database'
 
 // lslint:disable-next-line no-unused-vars
@@ -109,15 +109,20 @@ export async function usersRoutes(app: FastifyInstance) {
 
       // Informações que você deseja incluir no token
       const payload = {
-        usuarioId: name + randomUUID(),
-        nome: name,
-        papel: 'user',
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          password: user.password,
+          salt: user.salt,
+          created_at: user.created_at,
+          // Adicione outros campos, se necessário
+        },
       }
-
       // Configurações do token, como algoritmo de assinatura e tempo de expiração
       const opcoes: jwt.SignOptions = {
         algorithm: 'HS256', // Algoritmo de assinatura HMAC SHA-256
-        expiresIn: '2h', // Tempo de expiração do token (pode ser em segundos, minutos, horas, dias, etc.)
+        expiresIn: '7200000', // Tempo de expiração do token (pode ser em segundos, minutos, horas, dias, etc.)
       }
 
       // Criação do token
@@ -126,6 +131,13 @@ export async function usersRoutes(app: FastifyInstance) {
       console.log('Token JWT:', token)
 
       await knex('users').where('email', email).update('temp_if_login', token)
+
+      reply.setCookie('token', token, {
+        httpOnly: true, // O cookie só pode ser acessado pelo servidor (não por scripts no navegador)
+        secure: process.env.NODE_ENV === 'production', // Apenas enviar em conexões seguras (HTTPS) em produção
+        path: '/', // Define o caminho do cookie (pode ser ajustado conforme necessário)
+        expires: new Date(Number(opcoes.expiresIn) + Date.now()), // Define a data de expiração com 1 hora
+      })
 
       reply.send({ status: 'success', user: name, newToken: token })
     } else {

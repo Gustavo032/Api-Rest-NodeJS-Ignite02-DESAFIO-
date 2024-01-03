@@ -1,12 +1,9 @@
 ### Regras da aplicação
 
 - Deve ser possível criar um usuário [feito]
-- Deve ser possível identificar o usuário entre as requisições[feito]
-- 
+- Deve ser possível identificar o usuário entre as requisições [feito]
 - Deve ser possível registrar uma refeição feita, com as seguintes informações:
-    
     *As refeições devem ser relacionadas a um usuário.*
-    
     - Nome
     - Descrição
     - Data e Hora

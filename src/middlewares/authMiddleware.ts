@@ -4,7 +4,7 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
-const SECRET_KEY = process.env.JWT_SECRET || 'your-secret-key' // Troque pelo segredo do seu JWT
+const SECRET_KEY = '99698035' // Troque pelo segredo do seu JWT
 
 export async function authenticate(
   request: FastifyRequest,
@@ -12,18 +12,26 @@ export async function authenticate(
 ) {
   const token = request.cookies.token
 
-  if (!token) {
-    return reply.status(401).send({
-      error: 'unauthorized',
-    })
-  }
+  console.log('token asedalwhselkajs')
 
-  try {
-    const decoded = jwt.verify(token, SECRET_KEY)
-    request.user = decoded // Adiciona o usuário decodificado ao objeto de requisição
-  } catch (error) {
-    return reply.status(401).send({
-      error: 'unauthorized',
-    })
+  if (request.url !== '/auth') {
+    if (!token) {
+      console.error(' Token Undetermined')
+
+      return reply.status(401).send({
+        error: 'unauthorized',
+      })
+    }
+
+    console.error(' token certinhoooooooo ')
+
+    try {
+      const decoded = jwt.verify(token, SECRET_KEY)
+      request.user = decoded // Adiciona o usuário decodificado ao objeto de requisição
+    } catch (error) {
+      return reply.status(401).send({
+        error: 'unauthorized',
+      })
+    }
   }
 }

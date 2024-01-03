@@ -1,8 +1,8 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { randomUUID } from 'node:crypto'
 import { knex } from '../database'
 import jwt from 'jsonwebtoken'
+import { authenticate } from '../middlewares/authMiddleware'
 
 // todo plugin precisa sem async
 
@@ -20,19 +20,22 @@ export async function authRoutes(app: FastifyInstance) {
   app.addHook('preHandler', async (request, reply) => {
     console.log(`[${request.method}] ${request.url}`)
   })
-  app.post('/', async (request, reply) => {
+  app.post('/', { preHandler: authenticate }, async (request, reply) => {
     const loginBodySchema = z.object({
       name: z.string(),
-      jwtoken: z.string(),
+      jwtoken: z.string().default(() => request.cookies.token ?? ''),
       email: z.string(),
     })
 
-    const { name, jwtoken, email } = loginBodySchema.parse(request.body)
-    // vai ir lá no banco de dados e ver o temp que bate com o jwt enviado (se existir)
+    const { jwtoken, email } = loginBodySchema.parse(request.body)
+
+    const jwtokens = jwtoken
+
     // substituir pela variavel ambiente .env
     const secretKey = '99698035'
 
     const user = await knex('users').where('email', email).first()
+
     console.log(user)
     if (!user) {
       // Usuário não encontrado
@@ -44,7 +47,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     // Verifica se o token é válido e não expirou
-    jwt.verify(jwtoken, secretKey, (error: any, decoded: any) => {
+    jwt.verify(jwtokens, secretKey, (error: any, decoded: any) => {
       if (error) {
         if (error.name === 'TokenExpiredError') {
           console.log('Token expirado')
@@ -66,8 +69,9 @@ export async function authRoutes(app: FastifyInstance) {
     // procura o email e jwt correspondente
     const authenticated = await knex('users')
       .where('email', email)
-      .where('temp_if_login', jwtoken)
+      .where('temp_if_login', jwtokens)
       .returning('*')
+
     console.log(authenticated)
 
     if (authenticated.length > 0) {
@@ -75,15 +79,21 @@ export async function authRoutes(app: FastifyInstance) {
 
       // Informações que você deseja incluir no token
       const payload = {
-        usuarioId: name + randomUUID(),
-        nome: name,
-        papel: 'user',
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          password: user.password,
+          salt: user.salt,
+          created_at: user.created_at,
+          // Adicione outros campos, se necessário
+        },
       }
 
       // Configurações do token, como algoritmo de assinatura e tempo de expiração
       const opcoes: jwt.SignOptions = {
         algorithm: 'HS256', // Algoritmo de assinatura HMAC SHA-256
-        expiresIn: '1h', // Tempo de expiração do token (pode ser em segundos, minutos, horas, dias, etc.)
+        expiresIn: '3600000', // Tempo de expiração do token (pode ser em segundos, minutos, horas, dias, etc.)
       }
 
       // Criação do token
@@ -93,6 +103,13 @@ export async function authRoutes(app: FastifyInstance) {
         .where('email', email)
         .first()
         .update('temp_if_login', token)
+
+      reply.setCookie('token', token, {
+        httpOnly: true, // O cookie só pode ser acessado pelo servidor (não por scripts no navegador)
+        secure: process.env.NODE_ENV === 'production', // Apenas enviar em conexões seguras (HTTPS) em produção
+        path: '/', // Define o caminho do cookie (pode ser ajustado conforme necessário)
+        expires: new Date(Number(opcoes.expiresIn) + Date.now()), // Define a data de expiração com 1 hora
+      })
 
       reply.status(200).send({
         succes: true,
