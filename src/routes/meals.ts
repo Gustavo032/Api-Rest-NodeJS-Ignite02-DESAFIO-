@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { knex } from '../database'
 import { authenticate } from '../middlewares/authMiddleware'
+import { authorize } from '../middlewares/authorizationMiddleware'
 
 // todo plugin precisa sem async
 
@@ -47,33 +48,43 @@ export async function mealsRoutes(app: FastifyInstance) {
     }
   })
 
-  // // Edita uma refeição existente
-  // app.put(
-  //   '/meals/:id',
-  //   {
-  //     preHandler: [authenticate, authorize],
-  //     schema: { params: { id: { type: 'integer' } } },
-  //   },
-  //   async (request, reply) => {
-  //     const mealId = request.params.id
-  //     const { name, description, date_time, is_in_diet } = request.body
+  // Edita uma refeição existente
+  app.put(
+    '/:mealId',
+    {
+      preHandler: [authenticate, authorize],
+      schema: { params: { mealId: { type: 'integer' } } },
+    },
+    async (request, reply) => {
+      const mealsParamsSchema = z.object({
+        mealId: z.number(),
+      })
 
-  //     try {
-  //       const updatedRows = await knex('meals')
-  //         .where({ id: mealId })
-  //         .update({ name, description, date_time, is_in_diet })
+      const { mealId } = mealsParamsSchema.parse(request.params)
 
-  //       if (updatedRows > 0) {
-  //         reply.send({ message: 'Meal updated successfully' })
-  //       } else {
-  //         reply.status(404).send({ error: 'Meal not found' })
-  //       }
-  //     } catch (error) {
-  //       console.error(error)
-  //       reply.status(500).send({ error: 'Internal Server Error' })
-  //     }
-  //   },
-  // )
+      const { name, description, dateTime, isInDiet }: any = request.body
+
+      try {
+        const updatedRows = await knex('meals')
+          .where('id', mealId.toString())
+          .update({
+            name,
+            description,
+            date_time: dateTime,
+            is_in_diet: isInDiet,
+          })
+
+        if (updatedRows > 0) {
+          reply.send({ message: 'Meal updated successfully' })
+        } else {
+          reply.status(404).send({ error: 'Meal not found' })
+        }
+      } catch (error) {
+        console.error(error)
+        reply.status(500).send({ error: 'Internal Server Error' })
+      }
+    },
+  )
 
   // // Apaga uma refeição existente
   // app.delete(
