@@ -4,7 +4,7 @@ import { knex } from '../database'
 
 export async function authorize(request: FastifyRequest, reply: FastifyReply) {
   const mealsParamsSchema = z.object({
-    mealId: z.number(),
+    mealId: z.union([z.string(), z.number()]),
   })
   const { mealId } = mealsParamsSchema.parse(request.params)
 

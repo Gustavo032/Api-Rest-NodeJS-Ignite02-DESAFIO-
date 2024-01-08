@@ -20,6 +20,7 @@ declare module 'knex/types/tables' {
       description: string
       date_time: string
       is_in_diet: boolean
+      calories: number
     }
   }
 }

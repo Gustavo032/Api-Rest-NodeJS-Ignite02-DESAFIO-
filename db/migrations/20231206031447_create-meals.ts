@@ -14,6 +14,7 @@ export async function up(knex: Knex): Promise<void> {
     table.text('description')
     table.timestamp('date_time').notNullable()
     table.boolean('is_in_diet').defaultTo(true)
+    table.integer('calories').defaultTo(0)
   })
 }
 

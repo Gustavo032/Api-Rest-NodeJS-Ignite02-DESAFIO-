@@ -68,12 +68,11 @@ export async function usersRoutes(app: FastifyInstance) {
   app.post('/login', async (request, reply) => {
     // validação dos dados vindo da req
     const loginBodySchema = z.object({
-      name: z.string(),
       email: z.string(),
       password: z.string(),
     })
 
-    const { name, email, password } = loginBodySchema.parse(request.body)
+    const { email, password } = loginBodySchema.parse(request.body)
 
     function hashPassword(password: string, salt: string) {
       const hash = crypto.createHash('sha256')
@@ -139,7 +138,7 @@ export async function usersRoutes(app: FastifyInstance) {
         expires: new Date(Number(opcoes.expiresIn) + Date.now()), // Define a data de expiração com 1 hora
       })
 
-      reply.send({ status: 'success', user: name, newToken: token })
+      reply.send({ status: 'success', newToken: token })
     } else {
       reply
         .status(401)

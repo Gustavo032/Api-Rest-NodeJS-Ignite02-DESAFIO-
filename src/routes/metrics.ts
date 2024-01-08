@@ -1,64 +1,59 @@
 import { FastifyInstance } from 'fastify'
-import { z } from 'zod'
-import crypto, { randomUUID } from 'node:crypto'
 import { knex } from '../database'
-
-// todo plugin precisa sem async
-
-//  tipagem do req principal => tem que ser feito por schema do knex para
-// {
-// 	title: string,
-// 	amount: number,
-// 	type: 'credit' | 'debit'
-// }
-
-// Cookies <=> formas de manter contexto entre requisições:
-// @fastify/cookie
+import { authenticate } from '../middlewares/authMiddleware'
 
 export async function metricsRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', async (request, reply) => {
-    console.log(`[${request.method}] ${request.url}`)
+  app.get('/', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const userId = request.user.user.id
+
+      // Obtém a quantidade total de refeições do usuário
+      const totalMealsResult = await knex('meals')
+        .where({ user_id: userId })
+        .count()
+        .first()
+
+      // Obtém a quantidade de refeições dentro da dieta do usuário
+      const dietMealsResult = await knex('meals')
+        .where({ user_id: userId, is_in_diet: true })
+        .count()
+        .first()
+
+      // Obtém a quantidade de refeições fora da dieta do usuário
+      const nonDietMealsResult = await knex('meals')
+        .where({ user_id: userId, is_in_diet: false })
+        .count()
+        .first()
+
+      // Obtém a melhor sequência de refeições dentro da dieta (exemplo: últimas 5 refeições)
+      const bestDietSequence = await knex('meals')
+        .select(['id', 'name', 'description', 'date_time', 'calories'])
+        .where({ user_id: userId, is_in_diet: true })
+        .sum({ totalCalories: 'calories' }) // Calcula a soma de 'calories' e renomeia para 'totalCalories'
+        .groupBy('id', 'name', 'description', 'date_time')
+        .orderBy('totalCalories', 'desc') // Ordena pelo total de calorias
+        .limit(5)
+
+      // Verifica se os resultados estão definidos antes de acessar as propriedades
+      const metrics = {
+        totalMeals: totalMealsResult?.['count(*)'] || 0,
+        dietMeals: dietMealsResult?.['count(*)'] || 0,
+        nonDietMeals: nonDietMealsResult?.['count(*)'] || 0,
+        bestDietSequence: bestDietSequence.map((meal: any) => ({
+          id: meal.id,
+          name: meal.name,
+          description: meal.description,
+          date_time: meal.date_time,
+          calories: meal.calories,
+        })),
+      }
+
+      reply.send(metrics)
+    } catch (error) {
+      console.error(error)
+      reply.status(500).send({ error: 'Internal Server Error' })
+    }
   })
-  app.post('/create', async (request, reply) => {
-    // validação dos dados vindo da req
-    const createTransactionBodySchema = z.object({
-      name: z.string(),
-      email: z.string(),
-      password: z.string(),
-    })
 
-    // é tipo uma desestruturação usando a validação schema do zod
-    const { name, email, password } = createTransactionBodySchema.parse(
-      request.body,
-    )
-
-    function hashPassword(password: string, salt: string) {
-      const hash = crypto.createHash('sha256')
-      hash.update(password + salt)
-      const hashedPassword = hash.digest('hex')
-      return hashedPassword
-    }
-
-    function generateSalt() {
-      return crypto.randomBytes(16).toString('hex')
-    }
-
-    const salt = generateSalt()
-    const hashedUserInputPassword = hashPassword(password, salt)
-
-    const paths = await knex('users')
-      .insert({
-        name,
-        email,
-        password: hashedUserInputPassword,
-      })
-      .returning('*')
-
-    // bom retornar sempre como objeto-- melhor pra adicionar e modificar informações futuramente
-    return {
-      total: paths.length,
-      created: paths,
-      next: randomUUID(),
-    }
-  })
+  // Adicione outras rotas conforme necessário...
 }

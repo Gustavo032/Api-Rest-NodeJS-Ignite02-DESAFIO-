@@ -22,11 +22,11 @@ export async function mealsRoutes(app: FastifyInstance) {
       name: z.string(),
       description: z.string(),
       isInDiet: z.boolean(),
+      calories: z.number(),
     })
 
-    const { name, description, isInDiet } = createMealsBodySchema.parse(
-      request.body,
-    )
+    const { name, description, isInDiet, calories } =
+      createMealsBodySchema.parse(request.body)
 
     try {
       const newMeal = await knex('meals')
@@ -38,6 +38,7 @@ export async function mealsRoutes(app: FastifyInstance) {
             timeZone: 'America/Sao_Paulo', // Fuso horário de São Paulo (GMT-03)
           }),
           is_in_diet: isInDiet,
+          calories,
         })
         .returning('*')
 
@@ -62,20 +63,34 @@ export async function mealsRoutes(app: FastifyInstance) {
 
       const { mealId } = mealsParamsSchema.parse(request.params)
 
-      const { name, description, dateTime, isInDiet }: any = request.body
+      const mealsBodySchema = z.object({
+        name: z.string(),
+        description: z.string(),
+        isInDiet: z.boolean(),
+        dateTime: z.string(),
+        calories: z.number(),
+      })
+
+      const { name, description, dateTime, isInDiet, calories } =
+        mealsBodySchema.parse(request.body)
 
       try {
-        const updatedRows = await knex('meals')
+        const [updatedRows] = await knex('meals')
           .where('id', mealId.toString())
           .update({
             name,
             description,
             date_time: dateTime,
             is_in_diet: isInDiet,
+            calories,
           })
+          .returning('*') // Retorna todos os campos da refeição após a atualização
 
-        if (updatedRows > 0) {
-          reply.send({ message: 'Meal updated successfully' })
+        if (updatedRows) {
+          reply.send({
+            message: 'Meal updated successfully',
+            updatedMeal: updatedRows,
+          })
         } else {
           reply.status(404).send({ error: 'Meal not found' })
         }
@@ -87,29 +102,34 @@ export async function mealsRoutes(app: FastifyInstance) {
   )
 
   // // Apaga uma refeição existente
-  // app.delete(
-  //   '/meals/:id',
-  //   {
-  //     preHandler: [authenticate, authorize],
-  //     schema: { params: { id: { type: 'integer' } } },
-  //   },
-  //   async (request, reply) => {
-  //     const mealId = request.params.id
+  app.delete(
+    '/:mealId',
+    {
+      preHandler: [authenticate, authorize],
+      schema: { params: { mealId: { type: 'integer' } } },
+    },
+    async (request, reply) => {
+      const mealsParamsSchema = z.object({
+        mealId: z.number(),
+      })
 
-  //     try {
-  //       const deletedRows = await knex('meals').where({ id: mealId }).del()
+      const { mealId } = mealsParamsSchema.parse(request.params)
 
-  //       if (deletedRows > 0) {
-  //         reply.send({ message: 'Meal deleted successfully' })
-  //       } else {
-  //         reply.status(404).send({ error: 'Meal not found' })
-  //       }
-  //     } catch (error) {
-  //       console.error(error)
-  //       reply.status(500).send({ error: 'Internal Server Error' })
-  //     }
-  //   },
-  // )
+      try {
+        const deletedRows = await knex('meals').where('id', mealId).del()
+
+        console.log(deletedRows)
+        if (deletedRows > 0) {
+          reply.send({ message: 'Meal deleted successfully' })
+        } else {
+          reply.status(404).send({ error: 'Meal not found' })
+        }
+      } catch (error) {
+        console.error(error)
+        reply.status(500).send({ error: 'Internal Server Error' })
+      }
+    },
+  )
 
   // Lista todas as refeições do usuário autenticado
   app.get('/', { preHandler: authenticate }, async (request, reply) => {
@@ -137,27 +157,31 @@ export async function mealsRoutes(app: FastifyInstance) {
   })
 
   // Obtém detalhes de uma refeição específica
-  // app.get(
-  //   '/meals/:id',
-  //   {
-  //     preHandler: [authenticate, authorize],
-  //     schema: { params: { id: { type: 'integer' } } },
-  //   },
-  //   async (request, reply) => {
-  //     const mealId = request.params.id
+  app.get(
+    '/:mealId',
+    {
+      preHandler: [authenticate, authorize],
+      schema: { params: { mealId: { type: 'integer' } } },
+    },
+    async (request, reply) => {
+      const mealsParamsSchema = z.object({
+        mealId: z.number(),
+      })
 
-  //     try {
-  //       const meal = await knex('meals').where({ id: mealId }).first()
+      const { mealId } = mealsParamsSchema.parse(request.params)
 
-  //       if (meal) {
-  //         reply.send(meal)
-  //       } else {
-  //         reply.status(404).send({ error: 'Meal not found' })
-  //       }
-  //     } catch (error) {
-  //       console.error(error)
-  //       reply.status(500).send({ error: 'Internal Server Error' })
-  //     }
-  //   },
-  // )
+      try {
+        const meal = await knex('meals').where('id', mealId).first()
+
+        if (meal) {
+          reply.send(meal)
+        } else {
+          reply.status(404).send({ error: 'Meal not found' })
+        }
+      } catch (error) {
+        console.error(error)
+        reply.status(500).send({ error: 'Internal Server Error' })
+      }
+    },
+  )
 }

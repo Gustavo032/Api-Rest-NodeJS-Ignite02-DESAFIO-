@@ -22,7 +22,6 @@ export async function authRoutes(app: FastifyInstance) {
   })
   app.post('/', { preHandler: authenticate }, async (request, reply) => {
     const loginBodySchema = z.object({
-      name: z.string(),
       jwtoken: z.string().default(() => request.cookies.token ?? ''),
       email: z.string(),
     })
